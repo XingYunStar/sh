@@ -65,8 +65,9 @@ chmod +x NapcatPlugin.sh
 
 ````bash
 #!/bin/bash
-# Napcat 插件商店修复脚本
+# Napcat 插件商店换源脚本
 # 替换插件索引源为社区版
+# 在napcat容器内使用，或者在napcat的终端使用
 
 sed -i 's/NapNeko\/napcat-plugin-index/HolyFoxTeam\/napcat-plugin-community-index/g' ./napcat/napcat.mjs
 
