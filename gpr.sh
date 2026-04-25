@@ -17,7 +17,7 @@ get_datetime() {
     date +"%Y%m%d_%H%M%S"
 }
 
-# 在文件所在目录备份并删除文件
+# 在文件所在目录备份并删除文件（原功能）
 backup_and_remove() {
     local file="$1"
     local datetime="$2"
@@ -52,6 +52,28 @@ backup_and_remove() {
     return 0
 }
 
+# 备份 untracked 文件到统一目录（新功能）
+backup_untracked_files() {
+    local datetime=$1
+    local backup_dir="../untracked_backup_${datetime}"
+    
+    print_info "备份 untracked 文件到: $backup_dir"
+    mkdir -p "$backup_dir"
+    
+    local count=0
+    git ls-files --others --exclude-standard | while read file; do
+        if [ -f "$file" ]; then
+            local target_dir="$backup_dir/$(dirname "$file")"
+            mkdir -p "$target_dir"
+            cp "$file" "$target_dir/"
+            print_info "  已备份: $file"
+            ((count++))
+        fi
+    done
+    
+    echo $count
+}
+
 # 主程序
 main() {
     echo -e "${GREEN}========================================${NC}"
@@ -70,6 +92,54 @@ main() {
     print_info "当前目录: $(pwd)"
     echo ""
     
+    # ========== 新增：处理 untracked files ==========
+    print_info "检查未跟踪文件（untracked files）..."
+    untracked_files=$(git ls-files --others --exclude-standard)
+    
+    if [ -n "$untracked_files" ]; then
+        print_warning "检测到以下未跟踪文件："
+        echo "$untracked_files" | head -20
+        local file_count=$(echo "$untracked_files" | wc -l)
+        if [ $file_count -gt 20 ]; then
+            echo "  ... 共 $file_count 个文件"
+        fi
+        echo ""
+        
+        echo -e "${BLUE}请选择处理方式：${NC}"
+        echo "  1. 备份并删除所有未跟踪文件（推荐）"
+        echo "  2. 直接删除所有未跟踪文件（危险，不备份）"
+        echo "  3. 忽略，继续尝试 git pull"
+        echo "  4. 放弃操作"
+        
+        read -p "$(echo -e "${YELLOW}请选择 [1-4]: ${NC}")" untracked_choice
+        
+        case $untracked_choice in
+            1)
+                backup_untracked_files "$datetime"
+                print_info "正在删除未跟踪文件..."
+                git clean -fd
+                print_success "已删除未跟踪文件"
+                ;;
+            2)
+                print_warning "正在直接删除未跟踪文件（无备份）..."
+                git clean -fd
+                print_success "已删除未跟踪文件"
+                ;;
+            3)
+                print_info "跳过未跟踪文件处理，继续尝试 git pull"
+                ;;
+            4)
+                print_info "已取消操作"
+                exit 0
+                ;;
+            *)
+                print_error "无效选择，跳过处理"
+                ;;
+        esac
+        echo ""
+    fi
+    
+    # ========== 原有功能：处理 git pull 冲突 ==========
     # 尝试 git pull 并捕获冲突文件
     print_info "正在执行 git pull..."
     pull_output=$(git pull 2>&1)
@@ -85,7 +155,6 @@ main() {
     fi
     
     # 提取冲突文件列表 - 方法1：匹配 error 行后面的文件列表
-    # 先获取 "overwritten by merge:" 之后的所有行，然后提取以空格开头的文件路径
     conflict_files=$(echo "$pull_output" | awk '/overwritten by merge:/,/^[^ ]/' | grep -E '^[[:space:]]+' | sed 's/^[[:space:]]*//')
     
     # 如果方法1失败，使用方法2：直接匹配以空格开头且包含路径特征的行
